@@ -7,6 +7,8 @@
 
 package com.reactnativecommunity.cameraroll;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
@@ -21,8 +23,12 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.MediaStore.Images;
 import android.text.TextUtils;
+import android.content.pm.PackageManager;
+
+import androidx.core.app.ActivityCompat;
 
 import com.facebook.common.logging.FLog;
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.GuardedAsyncTask;
 import com.facebook.react.bridge.JSApplicationIllegalArgumentException;
 import com.facebook.react.bridge.NativeModule;
@@ -39,6 +45,8 @@ import com.facebook.react.bridge.WritableNativeArray;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.common.ReactConstants;
 import com.facebook.react.module.annotations.ReactModule;
+import com.facebook.react.modules.core.PermissionAwareActivity;
+import com.facebook.react.modules.core.PermissionListener;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -46,7 +54,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 import javax.annotation.Nullable;
 
@@ -59,11 +69,14 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
 
   public static final String NAME = "RNCCameraRoll";
 
+  private static final String ERROR_ACTIVITY_DOES_NOT_EXIST = "E_ACTIVITY_DOES_NOT_EXIST";
   private static final String ERROR_UNABLE_TO_LOAD = "E_UNABLE_TO_LOAD";
   private static final String ERROR_UNABLE_TO_LOAD_PERMISSION = "E_UNABLE_TO_LOAD_PERMISSION";
   private static final String ERROR_UNABLE_TO_SAVE = "E_UNABLE_TO_SAVE";
   private static final String ERROR_UNABLE_TO_DELETE = "E_UNABLE_TO_DELETE";
   private static final String ERROR_UNABLE_TO_FILTER = "E_UNABLE_TO_FILTER";
+  private static final String ERROR_PERMISSIONS_MISSING = "E_PERMISSION_MISSING";
+  private static final String ERROR_CALLBACK_ERROR = "E_CALLBACK_ERROR";
 
   private static final String ASSET_TYPE_PHOTOS = "Photos";
   private static final String ASSET_TYPE_VIDEOS = "Videos";
@@ -202,6 +215,83 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
           }
         }
       }
+    }
+  }
+
+  @ReactMethod
+  public void getAlbumNames(final ReadableMap options, final Promise promise) {
+    final Activity activity = getCurrentActivity();
+
+    if (activity == null) {
+      promise.reject(ERROR_ACTIVITY_DOES_NOT_EXIST, "Activity doesnt't exist");
+      return;
+    }
+
+    permissionsCheck(activity, promise, Collections.singletonList(Manifest.permission.WRITE_EXTERNAL_STORAGE), new Callable<Void>() {
+      @Override
+      public Void call() {
+        String[] PROJECTION_BUCKET = {
+          MediaStore.Images.ImageColumns.BUCKET_ID,
+          MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME,
+          MediaStore.Images.ImageColumns.DATE_TAKEN,
+          MediaStore.Images.ImageColumns.DATA,
+          "count(" + MediaStore.Images.ImageColumns.BUCKET_ID + ") as count"
+        };
+
+        String BUCKET_GROUP_BY = "1) GROUP BY 1,(2";
+        String BUCKET_ORDER_BY = "MAX(" + MediaStore.Images.ImageColumns.DATE_TAKEN + ") DESC";
+
+        Cursor cursor = getReactApplicationContext().getContentResolver().query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            PROJECTION_BUCKET,
+            BUCKET_GROUP_BY,
+            null,
+            BUCKET_ORDER_BY
+        );
+
+        WritableArray list = Arguments.createArray();
+
+        if (cursor != null && cursor.moveToFirst()) {
+          String bucket;
+          String date;
+          String data;
+          String count;
+          int bucketColumn = cursor.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
+          int dateColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATE_TAKEN);
+          int dataColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATA);
+          int countColumn = cursor.getColumnIndex("count");
+
+          do {
+            bucket = cursor.getString(bucketColumn);
+            date = cursor.getString(dateColumn);
+            data = cursor.getString(dataColumn);
+            count = cursor.getString(countColumn);
+
+            WritableMap image = Arguments.createMap();
+            setWritableMap(image, "count", count);
+            setWritableMap(image, "date", date);
+            setWritableMap(image, "cover", "file://" + data);
+            setWritableMap(image, "name", bucket);
+
+            list.pushMap(image);
+          } while (cursor.moveToNext());
+
+          cursor.close();
+        }
+
+        promise.resolve(list);
+
+        return null;
+      }
+    });
+  }
+
+  private void setWritableMap(WritableMap map, String key, String value) {
+    if (value == null) {
+      map.putNull(key);
+    }
+    else {
+      map.putString(key, value);
     }
   }
 
@@ -504,6 +594,49 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
       location.putDouble("longitude", longitude);
       location.putDouble("latitude", latitude);
       node.putMap("location", location);
+    }
+  }
+
+  private void permissionsCheck(final Activity activity, final Promise promise, final List<String> requiredPermissions, final Callable<Void> callback) {
+    List<String> missingPermissions = new ArrayList<>();
+
+    for (String permission : requiredPermissions) {
+      int status = ActivityCompat.checkSelfPermission(activity, permission);
+      if(status != PackageManager.PERMISSION_GRANTED) {
+        missingPermissions.add(permission);
+      }
+    }
+
+    if (!missingPermissions.isEmpty()) {
+      ((PermissionAwareActivity) activity).requestPermissions(missingPermissions.toArray(new String[missingPermissions.size()]), 1, new PermissionListener() {
+        @Override
+        public boolean onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+          if(requestCode == 1) {
+            for (int grantResult : grantResults) {
+              if(grantResult == PackageManager.PERMISSION_DENIED) {
+                promise.reject(ERROR_PERMISSIONS_MISSING, "Required permission missing");
+                return true;
+              }
+            }
+
+            try {
+              callback.call();
+            } catch (Exception e) {
+              promise.reject(ERROR_CALLBACK_ERROR, "Unknown error", e);
+            }
+          }
+
+          return true;
+        }
+      });
+
+      return;
+    }
+
+    try {
+      callback.call();
+    } catch (Exception e) {
+      promise.reject(ERROR_CALLBACK_ERROR, "Unknown error", e);
     }
   }
 
