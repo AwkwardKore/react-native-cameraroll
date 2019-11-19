@@ -69,6 +69,12 @@ export type GetPhotosParams = {
   mimeTypes?: Array<string>,
 };
 
+export type getAlbumNamesParams = {
+  count?: boolean,
+  thumbnail?: boolean,
+  thumbnailDimensions?: boolean,
+};
+
 export type PhotoIdentifier = {
   node: {
     type: string,
@@ -100,6 +106,18 @@ export type PhotoIdentifiersPage = {
     end_cursor?: string,
   },
 };
+
+export type AlbumIdentifier = {
+  name?: string,
+  cover?: string,
+  date?: string,
+  count?: string,
+};
+
+export type AlbumIdentifiersPage = {
+  albums: Array<AlbumIdentifier>;
+};
+
 export type SaveToCameraRollOptions = {
   type?: 'photo' | 'video' | 'auto',
   album?: string,
@@ -190,6 +208,16 @@ class CameraRoll {
       RNCCameraRoll.getPhotos(params).then(successCallback, errorCallback);
     }
     return RNCCameraRoll.getPhotos(params);
+  }
+
+  static getAlbums(params: getAlbumNamesParams): Promise<AlbumIdentifiersPage> {
+    if(arguments.lenght > 1) {
+      let successCallbak = arguments[1];
+      const errorCallback = arguments[2] || (() => {});
+      RNCCameraRoll.getAlbumNames(params).then(successCallback, errorCallback);
+    }
+
+    return RNCCameraRoll.getAlbumNames(params);
   }
 }
 
