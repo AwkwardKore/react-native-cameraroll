@@ -348,7 +348,7 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
               promise)
               .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
       }
-    }
+    });
   }
 
   private static class GetMediaTask extends GuardedAsyncTask<Void, Void> {
