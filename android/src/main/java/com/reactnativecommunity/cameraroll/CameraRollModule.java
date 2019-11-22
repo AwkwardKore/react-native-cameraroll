@@ -327,7 +327,7 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
       return;
     }
 
-    permissionsCheck(activity, promise, Collections.singletonList(Manifest.permissions.WRITE_EXTERNA_STORAGE), new Callable<Void>()) {
+    permissionsCheck(activity, promise, Collections.singletonList(Manifest.permission.WRITE_EXTERNAL_STORAGE), new Callable<Void>() {
       @Override
       public Void call() {
         int first = params.getInt("first");
