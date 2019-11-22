@@ -320,23 +320,35 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
    */
   @ReactMethod
   public void getPhotos(final ReadableMap params, final Promise promise) {
-    int first = params.getInt("first");
-    String after = params.hasKey("after") ? params.getString("after") : null;
-    String groupName = params.hasKey("groupName") ? params.getString("groupName") : null;
-    String assetType = params.hasKey("assetType") ? params.getString("assetType") : ASSET_TYPE_PHOTOS;
-    ReadableArray mimeTypes = params.hasKey("mimeTypes")
-        ? params.getArray("mimeTypes")
-        : null;
+    final Activity activity = getCurrentActivity();
 
-    new GetMediaTask(
-          getReactApplicationContext(),
-          first,
-          after,
-          groupName,
-          mimeTypes,
-          assetType,
-          promise)
-          .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+    if (activity == null) {
+      promise.reject(ERROR_ACTIVITY_DOES_NOT_EXIST, "Activity doesn't exist");
+      return;
+    }
+
+    permissionsCheck(activity, promise, Collections.singletonList(Manifest.permissions.WRITE_EXTERNA_STORAGE), new Callable<Void>()) {
+      @Override
+      public Void call() {
+        int first = params.getInt("first");
+        String after = params.hasKey("after") ? params.getString("after") : null;
+        String groupName = params.hasKey("groupName") ? params.getString("groupName") : null;
+        String assetType = params.hasKey("assetType") ? params.getString("assetType") : ASSET_TYPE_PHOTOS;
+        ReadableArray mimeTypes = params.hasKey("mimeTypes")
+            ? params.getArray("mimeTypes")
+            : null;
+
+        new GetMediaTask(
+              getReactApplicationContext(),
+              first,
+              after,
+              groupName,
+              mimeTypes,
+              assetType,
+              promise)
+              .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+      }
+    }
   }
 
   private static class GetMediaTask extends GuardedAsyncTask<Void, Void> {
