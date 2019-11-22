@@ -347,6 +347,8 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
               assetType,
               promise)
               .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+
+        return null;
       }
     });
   }
